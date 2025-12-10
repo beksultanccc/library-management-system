@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ulms_postgres
+    environment:
+      POSTGRES_DB: ulms_db
+      POSTGRES_USER: ulms_user
+      POSTGRES_PASSWORD: ulms_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ulms_user -d ulms_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ulms-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ulms_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ulms-network
+
+  elasticsearch:
+    image: elasticsearch:8.12.0
+    container_name: ulms_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ulms-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ulms_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ulms-network
+
+  backend:
+    build: .
+    container_name: ulms_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://ulms_user:ulms_password@postgres:5432/ulms_db
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+      - ENVIRONMENT=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    networks:
+      - ulms-network
+
+
+  mock-smtp:
+    image: rnwood/smtp4dev:latest
+    container_name: ulms_mock_smtp
+    ports:
+      - "5000:80"
+      - "25:25"
+      - "143:143"
+    networks:
+      - ulms-network
+
+networks:
+  ulms-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  rabbitmq_data:

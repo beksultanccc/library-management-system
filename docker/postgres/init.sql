@@ -1,0 +1,1 @@
+GRANT ALL PRIVILEGES ON DATABASE ulms_db TO ulms_user;
