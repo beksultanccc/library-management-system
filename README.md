@@ -41,7 +41,3 @@
    - OpenAPI: http://localhost:8000/docs
    - Redoc: http://localhost:8000/redoc
 
-3. Tests:
-   ```
-   pytest -q
-   ```
